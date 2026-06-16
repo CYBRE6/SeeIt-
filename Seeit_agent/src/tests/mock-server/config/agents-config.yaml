@@ -1,0 +1,22 @@
+# agents-config.yaml
+---
+plugin: rest
+resources:
+
+- path: "/agents"
+  method: GET
+  response:
+    statusCode: 200
+    content: '{ "data": { "affected_items": [ { "id": "001", "name": "mock-agent-01", "ip": "192.168.1.101", "status": "active", "os": { "name": "Ubuntu", "version": "22.04" }, "version": "4.7.0" }, { "id": "002", "name": "mock-agent-02", "ip": "192.168.1.102", "status": "active", "os": { "name": "Windows", "version": "10.0" }, "version": "4.7.0" } ], "total_affected_items": 2 } }'
+
+- path: "/agents/{agent_id}"
+  method: GET
+  response:
+    statusCode: 200
+    content: '{ "data": { "affected_items": [ { "id": "001", "name": "mock-agent-01", "ip": "192.168.1.101", "status": "active", "os": { "name": "Ubuntu", "version": "22.04" }, "version": "4.7.0" } ], "total_affected_items": 1 } }'
+
+- path: "/security/alerts"
+  method: GET
+  response:
+    statusCode: 200
+    content: '{ "data": { "affected_items": [ { "id": "alert-001", "rule": { "id": "1001", "name": "Mock alert", "level": 10 }, "agent": { "id": "001", "name": "mock-agent-01" }, "severity": "critical", "status": "new", "title": "Mock critical alert", "timestamp": "2026-05-25T12:00:00Z" } ], "total_affected_items": 1 } }'

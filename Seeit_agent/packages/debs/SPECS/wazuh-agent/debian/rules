@@ -1,0 +1,63 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+#
+# This file was originally written by Joey Hess and Craig Small.
+# As a special exception, when this file is copied by dh-make into a
+# dh-make output file, you may use that output file without restriction.
+# This special exception was added by Craig Small in version 0.37 of dh-make.
+#
+# Modified to make a template file for a multi-binary package with separated
+# build-arch and build-indep targets  by Bill Allombert 2001
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+export TARGET_DIR=${CURDIR}/debian/wazuh-agent
+
+# Package build options
+export INSTALLATION_DIR=""
+export JOBS=$(shell nproc)
+export DEBUG_ENABLED="no"
+export PATH="${PATH}"
+export LD_LIBRARY_PATH=""
+export VCPKG_BINARY_SOURCES=""
+export VCPKG_FORCE_SYSTEM_BINARIES=""
+
+%:
+	dh $@
+
+override_dh_shlibdeps:
+
+override_dh_auto_configure:
+
+override_dh_auto_install:
+
+override_dh_install:
+
+	# Build the binaries
+	if [ -d "$(shell pwd)/src/build" ]; then \
+		cmake --install $(shell pwd)/src/build --prefix ${TARGET_DIR}$(INSTALLATION_DIR); \
+	else \
+		cmake src -B $(shell pwd)/src/build; \
+		cmake --build $(shell pwd)/src/build --parallel $(JOBS); \
+		cmake --install $(shell pwd)/src/build --prefix ${TARGET_DIR}$(INSTALLATION_DIR); \
+	fi
+	install -D /usr/lib/systemd/system/wazuh-agent.service \
+		${TARGET_DIR}$(INSTALLATION_DIR)/usr/lib/systemd/system/wazuh-agent.service
+	sed -i "s|${TARGET_DIR}$(INSTALLATION_DIR)/|/|g" \
+		${TARGET_DIR}$(INSTALLATION_DIR)/usr/lib/systemd/system/wazuh-agent.service
+
+override_dh_auto_clean:
+	make -C src clean
+
+override_dh_usrlocal:
+
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+.PHONY: override_dh_install override_dh_strip override_dh_auto_clean override_dh_auto_build override_dh_auto_configure override_dh_usrlocal

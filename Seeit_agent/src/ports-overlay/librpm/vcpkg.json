@@ -1,0 +1,46 @@
+{
+  "name": "librpm",
+  "version": "4.18.2",
+  "description": "This is RPM, the RPM Package Manager.",
+  "homepage": "https://github.com/rpm-software-management/rpm",
+  "license": "GPL-2.0",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    {
+      "name": "bzip2",
+      "version>=": "1.0.8#5"
+    },
+    {
+      "name": "libmagic"
+    },
+    {
+      "name": "libpopt"
+    },
+    {
+      "name": "lua"
+    },
+    {
+      "name": "sqlite3"
+    }
+  ],
+  "vcpkg-configuration": {
+    "default-registry": {
+      "kind": "git",
+      "repository": "https://github.com/Microsoft/vcpkg",
+      "baseline": "f7423ee180c4b7f40d43402c2feb3859161ef625"
+    }
+  },
+  "overrides": [
+    {
+      "name": "lua",
+      "version": "5.4.6"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+name: 4.X - Create and publish - Unit tests Docker image
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/testing/unit-tests/**"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: wazuh/unit-tests
+
+jobs:
+  deprecated:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Warning
+        run: echo "This workflow is deprecated. Be careful, you have just run it from main."

@@ -1,0 +1,17 @@
+[Unit]
+Description=Seeit agent
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/env WAZUH_HOME/Seeit-agent --config-file WAZUH_CONFIG_FILE
+TimeoutStopSec=30s
+
+KillSignal=SIGTERM
+
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

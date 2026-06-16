@@ -1,0 +1,16 @@
+# Modules
+
+- [Active Response](active-response/) - Automated security response actions triggered by detected events
+- [Agent Management](agent-management/) - Centralized configuration and group management for agents
+- [Integrations](integrations/) - Cloud services and third-party platform integrations
+- [Control](control/) - Manager control operations (restart, reload) via wm_control module
+- [Command](command/) - Scheduled command execution through the command wodle
+- [Syscollector](syscollector/) - System inventory collection and monitoring
+- [Logcollector](logcollector/) - Log ingestion
+- [FIM](fim/) - File Integrity Monitoring with persistent state synchronization
+- [SCA](sca/) - Security Configuration Assessment for compliance evaluation
+- [Vulnerability Scanner](vulnerability-scanner/) - CVE detection and vulnerability assessment
+- [Inventory Sync](inventory-sync/) - Manager-side synchronization service for agent inventory and context data
+- [Agent Sync Protocol](utils/sync-protocol/) - Agent-side library for synchronizing data with the manager
+- [FlatBuffers](utils/flatbuffers/) - High-performance serialization for synchronization protocol
+- [Cluster](utils/cluster/) - Manages the Wazuh server cluster

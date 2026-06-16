@@ -1,0 +1,246 @@
+run-name: Inventory Sync Integration Tests - ${{ github.event.pull_request.number || github.sha }}
+name: 5.X - Inventory Sync - Integration tests
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened, ready_for_review]
+    paths:
+      - 'src/wazuh_modules/inventory_sync/**'
+      - 'src/shared_modules/utils/flatbuffers/**'
+      - '.github/workflows/5_testintegration_inventory-sync.yml'
+      - 'src/shared_modules/indexer_connector/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  inventory-sync-integration-tests:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    name: inventory-sync-integration-tests
+    runs-on: ubuntu-24.04
+
+    # Service containers to run alongside the job
+    services:
+      opensearch:
+        image: opensearchproject/opensearch:latest
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: true
+          action.auto_create_index: "true"
+          cluster.routing.allocation.disk.threshold_enabled: "false"
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Cancel previous runs
+        uses: fkirc/skip-duplicate-actions@master
+        with:
+          cancel_others: 'true'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          skip_after_successful_duplicate: 'false'
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free disk space (safe cleanup)
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: "Install a compatible CMake"
+        uses: ./.github/actions/reinstall_cmake
+
+      - name: Build wazuh manager for linux
+        run: |
+          make deps -C src TARGET=manager -j2
+          make -C src TARGET=manager -j2
+
+      - name: Install wazuh manager for linux
+        run: |
+          echo 'USER_LANGUAGE="en"' > ./etc/preloaded-vars.conf
+          echo "" >> ./etc/preloaded-vars.conf
+          echo 'USER_INSTALL_TYPE="manager"' >> ./etc/preloaded-vars.conf
+          echo "" >> ./etc/preloaded-vars.conf
+          echo 'USER_DIR="/var/wazuh-manager"' >> ./etc/preloaded-vars.conf
+          echo "" >> ./etc/preloaded-vars.conf
+          echo 'USER_ENABLE_AUTHD="y"' >> ./etc/preloaded-vars.conf
+          echo "" >> ./etc/preloaded-vars.conf
+          echo 'USER_AUTO_START="n"' >> ./etc/preloaded-vars.conf
+          echo "" >> ./etc/preloaded-vars.conf
+          sudo sh install.sh
+          rm ./etc/preloaded-vars.conf
+
+      - name: Configure indexer connector
+        run: |
+          CONFIGURATION_FILE="/var/wazuh-manager/etc/wazuh-manager.conf"
+          sudo sed -i 's/https:\/\/127\.0\.0\.1:9200/http:\/\/127.0.0.1:9200/g' $CONFIGURATION_FILE
+
+          sudo mkdir -p /var/wazuh-manager/etc/certs
+          sudo touch /var/wazuh-manager/etc/certs/root-ca.pem
+
+          sudo sed -i '/manager.pem/d' $CONFIGURATION_FILE
+          sudo sed -i '/manager-key.pem/d' $CONFIGURATION_FILE
+          sudo sed -i 's/<ca>etc/<ca>\/var\/wazuh-manager\/etc/' $CONFIGURATION_FILE
+
+          # Print wazuh configuration file content for verification
+          echo "[>] Current wazuh-manager.conf content:"
+          echo "=========================================="
+          sudo cat $CONFIGURATION_FILE
+          echo "=========================================="
+
+          # Start Wazuh manager
+          sudo systemctl start wazuh-manager
+          sleep 10
+
+          # Verify installation
+          if systemctl is-active --quiet wazuh-manager; then
+            echo "[+] Wazuh manager installed and running"
+            echo "[*] Service status:"
+            sudo systemctl status wazuh-manager --no-pager --lines=5
+          else
+            echo "[-] Failed to start Wazuh manager"
+            sudo systemctl status wazuh-manager --no-pager
+            exit 1
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3 \
+            python3-pip \
+            python3-venv \
+            flatbuffers-compiler
+
+      - name: Setup Python test environment
+        working-directory: src/wazuh_modules/inventory_sync/qa
+        run: |
+          echo "[>] Setting up Python environment..."
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          echo "[+] Python environment ready"
+
+      - name: Generate FlatBuffers classes
+        working-directory: src/wazuh_modules/inventory_sync/qa
+        run: |
+          echo "[>] Generating FlatBuffers classes..."
+          source venv/bin/activate
+          python3 generate_flatbuffers.py
+
+          if [ -d "generated" ]; then
+            echo "[+] FlatBuffers classes generated successfully"
+            echo "[*] Generated files:"
+            find generated -name "*.py" | sort
+          else
+            echo "[-] Failed to generate FlatBuffers classes"
+            exit 1
+          fi
+
+      - name: Run inventory sync integration tests
+        working-directory: src/wazuh_modules/inventory_sync/qa
+        env:
+          TEST_MANAGER: '127.0.0.1'
+        run: |
+          echo "[>] Running inventory sync integration tests..."
+          source venv/bin/activate
+
+          # List available tests
+          echo "[*] Available tests:"
+          python3 run_tests.py --list-tests
+
+          # Run all tests
+          echo "[>] Running all integration tests..."
+          python3 run_tests.py --manager "$TEST_MANAGER" --verbose
+
+      - name: Cleanup and collect logs
+        if: always()
+        run: |
+          echo "[>] Collecting test results and logs..."
+
+          # Stop Wazuh manager if installed from package
+          if systemctl is-active --quiet wazuh-manager 2>/dev/null; then
+            sudo systemctl stop wazuh-manager
+            echo "[+] Stopped wazuh-manager"
+          fi
+
+          # Debug: Check Wazuh installation and directories
+          echo "[*] Debugging Wazuh installation..."
+          echo "[*] Checking if /var/wazuh-manager exists:"
+          ls -la /var/wazuh-manager/ 2>/dev/null || echo "[-] /var/wazuh-manager directory not found"
+
+          echo "[*] Checking if /var/wazuh-manager/logs exists:"
+          ls -la /var/wazuh-manager/logs/ 2>/dev/null || echo "[-] /var/wazuh-manager/logs directory not found"
+
+          echo "[*] Checking all files in /var/wazuh-manager/logs/ (if exists):"
+          sudo find /var/wazuh-manager/logs/ -type f -name "*.log" 2>/dev/null || echo "[-] No log files found"
+
+          echo "[*] Checking Wazuh service status:"
+          sudo systemctl status wazuh-manager --no-pager --lines=10 || echo "[-] Could not get service status"
+
+          echo "[*] Checking if Wazuh was actually installed:"
+          dpkg -l | grep wazuh || echo "[-] No Wazuh packages found"
+
+          # Collect Wazuh logs if they exist
+          if [ -f /var/wazuh-manager/logs/wazuh-manager.log ]; then
+            echo "[*] Wazuh logs (last 50 lines):"
+            sudo tail -50 /var/wazuh-manager/logs/wazuh-manager.log
+
+            # Copy wazuh-manager.log to workspace for artifact upload
+            sudo cp /var/wazuh-manager/logs/wazuh-manager.log ./wazuh-manager.log
+            sudo chown $USER:$USER ./wazuh-manager.log
+            echo "[+] Copied wazuh-manager.log to workspace"
+          else
+            echo "[-] wazuh-manager.log not found at /var/wazuh-manager/logs/wazuh-manager.log"
+
+            # Try to find any log files that might exist
+            echo "[*] Searching for any log files in the system:"
+            sudo find /var/log -name "*wazuh*" -o -name "*ossec*" 2>/dev/null | head -10 || echo "[-] No Wazuh/OSSEC logs found in /var/log"
+
+            # Check if logs might be in a different location
+            echo "[*] Checking common log locations:"
+            for log_path in "/var/log/wazuh" "/var/log/ossec" "/opt/wazuh/logs" "/usr/local/ossec/logs"; do
+              if [ -d "$log_path" ]; then
+                echo "[+] Found log directory: $log_path"
+                ls -la "$log_path"/
+              fi
+            done
+          fi
+
+          echo "[+] Cleanup completed"
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-sync-test-results
+          path: |
+            src/wazuh_modules/inventory_sync/qa/generated/
+            src/wazuh_modules/inventory_sync/qa/wazuh_agents.json
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload Wazuh logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wazuh-logs
+          path: |
+            wazuh-manager.log
+          retention-days: 7
+          if-no-files-found: warn

@@ -1,0 +1,9 @@
+# commands-config.yaml
+---
+plugin: rest
+resources:
+
+- path: "/api/v1/files"
+  method: GET
+  response:
+    scriptFile: files.groovy
